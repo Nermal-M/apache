@@ -1,0 +1,181 @@
+MATRIX MULTIPLICATION
+
+MAPPER (mapper.py)
+------------------
+import sys
+
+for line in sys.stdin:
+    m, r, c, v = line.strip().split(",")
+
+    if m == "A":
+        for k in range(2):
+            print(f"{r},{k}\tA,{c},{v}")
+    else:
+        for i in range(2):
+            print(f"{i},{c}\tB,{r},{v}")
+
+
+REDUCER (reducer.py)
+--------------------
+import sys
+
+data = {}
+
+for line in sys.stdin:
+    key, val = line.strip().split("\t")
+    m, k, v = val.split(",")
+
+    data.setdefault(key, {"A": {}, "B": {}})
+    data[key][m][int(k)] = int(v)
+
+for key, d in sorted(data.items()):
+    result = sum(d["A"][k] * d["B"][k] for k in range(2))
+    print(key, result, sep="\t")
+
+
+WORD COUNT
+
+MAPPER (mapper.py)
+------------------
+#!/usr/bin/env python3
+
+import sys
+
+for line in sys.stdin:
+    words = line.strip().split()
+
+    for word in words:
+        print(f"{word}\t1")
+
+
+REDUCER (reducer.py)
+--------------------
+#!/usr/bin/env python3
+
+import sys
+
+current_word = None
+count = 0
+
+for line in sys.stdin:
+    word, value = line.strip().split("\t")
+
+    if current_word == word:
+        count += int(value)
+    else:
+        if current_word:
+            print(f"{current_word}\t{count}")
+
+        current_word = word
+        count = int(value)
+
+if current_word:
+    print(f"{current_word}\t{count}")
+
+
+EXPERIMENT 7 - SQOOP IMPORT AND EXPORT
+
+1. Start and enable MySQL
+-------------------------
+sudo systemctl start mysql
+sudo systemctl enable mysql
+
+
+2. Create the Sqoop MySQL user
+------------------------------
+Open MySQL:
+
+sudo mysql
+
+Run this SQL command:
+
+CREATE USER 'sqoopuser'@'localhost' IDENTIFIED BY 'sqoop123';
+
+Exit MySQL:
+
+EXIT;
+
+
+3. Download and install Sqoop
+------------------------------
+cd ~
+wget https://downloads.apache.org/sqoop/1.4.7/sqoop-1.4.7.bin__hadoop-2.6.0.tar.gz
+tar -xvzf sqoop-1.4.7.bin__hadoop-2.6.0.tar.gz
+sudo mv sqoop-1.4.7.bin__hadoop-2.6.0 /usr/local/sqoop
+
+
+4. Download and install the MySQL JDBC connector
+------------------------------------------------
+cd /usr/local/sqoop/lib
+sudo wget https://downloads.mysql.com/archives/get/p/3/file/mysql-connector-j-8.0.33.tar.gz
+sudo tar -xvzf mysql-connector-j-8.0.33.tar.gz
+sudo cp mysql-connector-j-8.0.33/mysql-connector-j-8.0.33.jar .
+
+
+5. Configure Sqoop environment variables
+-----------------------------------------
+echo 'export SQOOP_HOME=/usr/local/sqoop' >> ~/.bashrc
+echo 'export PATH=$PATH:$SQOOP_HOME/bin' >> ~/.bashrc
+source ~/.bashrc
+
+
+6. Import data from MySQL to HDFS
+---------------------------------
+sqoop import \\
+--connect jdbc:mysql://localhost/company \\
+--username sqoopuser \\
+--password sqoop123 \\
+--table employees \\
+--target-dir /user/$USER/employees_data \\
+-m 1
+
+
+7. Verify imported data in HDFS
+-------------------------------
+hdfs dfs -ls /user/$USER/employees_data
+hdfs dfs -cat /user/$USER/employees_data/part-m-00000
+
+
+8. Create the destination table for Sqoop export
+------------------------------------------------
+Open MySQL:
+
+sudo mysql
+
+Run:
+
+USE company;
+
+CREATE TABLE employees_export (
+    id INT PRIMARY KEY,
+    name VARCHAR(50),
+    department VARCHAR(50),
+    salary INT
+);
+
+Exit MySQL:
+
+EXIT;
+
+
+9. Export data from HDFS to MySQL
+---------------------------------
+sqoop export \\
+--connect jdbc:mysql://localhost/company \\
+--username sqoopuser \\
+--password sqoop123 \\
+--table employees_export \\
+--export-dir /user/$USER/employees_data \\
+--input-fields-terminated-by ',' \\
+-m 1
+
+
+NOTES
+-----
+- Run the Matrix mapper and reducer as separate files.
+- Run the Word Count mapper and reducer as separate files.
+- The Sqoop commands assume that the MySQL database is named 'company' and contains an 'employees' table.
+- The MySQL user must have the required permissions on the company database. If needed, grant them from MySQL, for example:
+  GRANT ALL PRIVILEGES ON company.* TO 'sqoopuser'@'localhost';
+  FLUSH PRIVILEGES;
+- The Sqoop 1.4.7 binary shown here is built for Hadoop 2.6.0; compatibility with Hadoop 3.x may require additional configuration.
